@@ -3,8 +3,14 @@
 SpriteVideo & Memory Safe:
     Script minimalista para convertir un sprite sheet (1 sola fila de frames) en un video MP4
     centrado sobre un fondo negro en la resolución que elijas.
+Crea un entorno:
+    python -m venv venv
+Despues inicialo:
+    source venv/bin/activate
 Instalación de imports (arch dentro de un entorno [venv]):
     python -m pip install imageio imageio-ffmpeg pillow numpy
+Despues ejecuta el archivo:
+    python spriteKit.py
 """
 
 import imageio.v3 as iio
