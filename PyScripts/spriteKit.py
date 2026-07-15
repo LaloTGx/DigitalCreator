@@ -21,6 +21,7 @@ import os
 import readline
 import glob
 
+# Completador de rutas
 def path_completer(text, state):
     text = os.path.expanduser(text)
     matches = glob.glob(text + '*')
@@ -30,6 +31,7 @@ readline.set_completer_delims(' \t\n;')
 readline.parse_and_bind("tab: complete")
 readline.set_completer(path_completer)
 
+# Resolucion de videos
 PRESETS = {
     "1":    (1280, 720),
     "2":    (1920, 1080),
@@ -37,8 +39,8 @@ PRESETS = {
     "4":    (3840, 2160),
 }
 
+# Metodos para el menu
 class SpriteUI:
-# Menu principal
     @staticmethod
     def ask_mode():
         print(f"\n: -- SpriteSheet Toolkit -- :")
@@ -52,7 +54,7 @@ class SpriteUI:
             print("Saliendo...")
             return None
         return mode
-# pregunta de la ruta de la imagen
+
     @staticmethod
     def ask_path(prompt: str):
         while True:
@@ -65,7 +67,7 @@ class SpriteUI:
                 print(f"Número total de frames: 1 - {engine.total_frames}")
                 return p, engine
             print(f"No encontré el archivo en {p}")
-# pregunta para valores enteros
+
     @staticmethod
     def ask_int(prompt: str, min_val=1, max_val=None, default=None):
         while True:
@@ -76,7 +78,7 @@ class SpriteUI:
                 if (min_val and v < min_val) or (max_val and v > max_val): continue
                 return v
             except ValueError: print("Ingresa un número entero.")
-# pregunta para valores decimales
+
     @staticmethod
     def ask_float(prompt: str, min_val=None, default=None):
         while True:
@@ -87,7 +89,7 @@ class SpriteUI:
                 if min_val is not None and v < min_val: continue
                 return v
             except ValueError: print("Ingresa un número decimal.")
-# pregunta la posición del sprite
+
     @staticmethod
     def ask_position():
         print(f"\n: -- Posición del Sprite (Numpad) -- :")
@@ -96,7 +98,7 @@ class SpriteUI:
         print("[7] Bot-L  [8] Bot-C  [9] Bot-R")
         pos = input("Selecciona posición [5]: ").strip() or "5"
         return pos
-# pregunta para el fondo
+
     @staticmethod
     def ask_background():
         hex_val = input("Color de fondo HEX (6 valores, ej: FF5733 #FF5733, FFF, #FFF) [000000]: ").strip().replace("#", "")
@@ -111,19 +113,19 @@ class SpriteUI:
         except:
             print(f"Formato '{hex_val}' inválido. Usando el color #000000")
             return (0, 0, 0, 255)
-# pregunta para cualquier duración
+
     @staticmethod
-    def ask_time_format():
-        print(f"\n: -- Duración del Video -- :")
+    def ask_time(title="Duración del Video", default=0.0):
+        print(f"\n: -- {title} -- :")
         print("[s] Segundos | [m] Minutos | [h] Horas")
         choice = input("Selecciona unidad [s]: ").strip().lower() or 's'
 
-        val = SpriteUI.ask_float("Cantidad", default=4.0)
+        val = SpriteUI.ask_float("Cantidad", min_val=0.0, default=default)
 
         if choice == 'm': return val * 60
         if choice == 'h': return val * 3600
         return val
-# pregunta para la orientacion (canvas) del video
+
     @staticmethod
     def ask_video_setup():
         ori = input("Orientación del video [v (Vertical) / H (Horizontal)]: ").lower()
@@ -138,18 +140,20 @@ class SpriteUI:
         if ori == 'v':
             return (base_res[1], base_res[0])
         return base_res
-# proceso del sprite
+
+# Manejo del SpriteSheet
 class SpriteEngine:
     def __init__(self, sheet_path: Path, canvas_px: int):
         self.sheet = Image.open(sheet_path).convert("RGBA")
         self.canvas_px = canvas_px
         self.total_frames = self.sheet.width // canvas_px
+        # Guarda un frame limpio del fondo para reutilizarlo en los delays.
         self.clean_frame = None
 
     def get_base_processed(self, start, end, out_size, scale, bg_color, pos_key="5", existing_frames=None):
         W, H = out_size
 
-        # 1. Extraemos los frames seleccionados
+        # Extraer frames seleccionados
         new_sprite_frames = []
         for i in range(start - 1, end):
             x = i * self.canvas_px
@@ -160,7 +164,7 @@ class SpriteEngine:
                 fr = fr.resize(new_size, Image.NEAREST)
             new_sprite_frames.append(fr.convert("RGBA"))
 
-        # 2. Sincronizamos longitudes
+        # Sincronizar longitudes
         num_new = len(new_sprite_frames)
         num_old = len(existing_frames) if existing_frames else 0
         total_len = max(num_new, num_old)
@@ -168,9 +172,9 @@ class SpriteEngine:
         final_frames = []
 
         for i in range(total_len):
-            # Capa base
+            # Capa base (escena existente o fondo vacio)
             if existing_frames:
-                # Si el anterior era más corto, lo congelamos en su último frame
+                # Si el anterior spritesheet tiene menos frames se congela
                 idx_old = min(i, num_old - 1)
                 canvas = Image.fromarray(existing_frames[idx_old]).convert("RGBA")
             else:
@@ -178,12 +182,11 @@ class SpriteEngine:
                 if self.clean_frame is None:
                     self.clean_frame = np.array(canvas.convert("RGB"))
 
-            # Capa nueva (el sprite actual)
-            # USAMOS min() EN LUGAR DE % PARA NO FORZAR EL LOOP
+            # Nueva capa del spritesheet actual
             idx_new = min(i, num_new - 1)
             fr = new_sprite_frames[idx_new]
 
-            # --- Cálculo de posición ---
+            # Ubicacion de los sprites
             sw, sh = fr.size
             cw, ch = W // 3, H // 3
             c_x = [cw // 2, cw + cw // 2, 2 * cw + cw // 2]
@@ -195,36 +198,59 @@ class SpriteEngine:
             }
             pos = positions.get(pos_key, positions["5"])
 
-            # Composición
             canvas.alpha_composite(fr, pos)
             final_frames.append(np.array(canvas.convert("RGB")))
 
         return final_frames
-# proceso de renderizacion
+
+# Proceso de renderización
 class VideoRenderer:
     @staticmethod
-    def render(out_name, base_frames, clean_frame, duration_s, is_loop, fps, keep_last):
-        # Streaming: Enviamos los frames uno a uno usando un generador.
+    def render(out_name, base_frames, clean_frame, duration_s, loop, fps, intro_delay=0.0, outro_delay=0.0, keep_first=True, keep_last=True):
         num_base = len(base_frames)
-        # Se calcula los frames totales que tendrá el video final
-        total_video_frames = int(duration_s * fps)
+
+        # Convertir segundos a cantidad de frames
+        intro_frames = int(intro_delay * fps)
+        outro_frames = int(outro_delay * fps)
+
+        # Si hay loop, la duración la determina el tiempo solicitado.
+        # Si no hay loop, solo se reproduce una vuelta completa de los frames seleccionados.
+        if loop:
+            animation_frames = int(duration_s * fps)
+        else:
+            animation_frames = num_base
+
+        total_video_frames = intro_frames + animation_frames + outro_frames
 
         def frame_generator():
-            for i in range(total_video_frames):
-                # Lógica de Loop o Frame Final (Padding)
-                if is_loop:
-                    idx = i % num_base
-                    img = base_frames[idx]
-                else:
-                    # Si no es loop, mostramos la animación una vez y luego congelamos el último
-                    if i < num_base:
-                        img = base_frames[i]
-                    else:
-                        img = base_frames[-1] if keep_last else clean_frame
+            rendered_frames = 0
 
-                if (i + 1) % 50 == 0 or (i + 1) == total_video_frames:
-                    print(f"\r- Enviando a GPU: {i+1}/{total_video_frames} frames", end="", flush=True)
-                yield img
+            def print_progress():
+                # Mostrar el progreso cada 50 frames para evitar llamar a print() en cada iteración.
+                if rendered_frames % 50 == 0 or rendered_frames == total_video_frames:
+                    print(f"\r- Enviando a GPU: {rendered_frames}/{total_video_frames} frames", end="", flush=True)
+
+            # Delay de entrada
+            intro_image = base_frames[0] if keep_first else clean_frame
+            for _ in range(intro_frames):
+                rendered_frames += 1
+                print_progress()
+                yield intro_image
+
+            # Animación Principal
+            for i in range(animation_frames):
+                rendered_frames += 1
+                idx = i % num_base if loop else min(i, num_base - 1)
+                animation_image = base_frames[idx]
+                print_progress()
+                yield animation_image
+
+            # Delay de salida
+            outro_image = base_frames[-1] if keep_last else clean_frame
+            for _ in range(outro_frames):
+                rendered_frames += 1
+                print_progress()
+                yield outro_image
 
         print(f"- Renderizando {total_video_frames} frames a {fps:.3f} FPS...")
 
@@ -236,9 +262,9 @@ class VideoRenderer:
             iio.imwrite(out_name, frame_generator(), fps=fps, extension=".mp4",
                         codec="libx264", pixelformat="yuv420p", is_batch=True)
 
+# Menu
 def main():
     ui = SpriteUI()
-    # Menú Principal
     mode = ui.ask_mode()
     if not mode: return
 
@@ -248,14 +274,13 @@ def main():
     final_engine = None
     output_path = None
 
+    # Agregar uno o varios spritesheets a la escena
     while True:
-        # Ruta y motor del sprite
         path, engine = ui.ask_path("Ruta del sprite: ")
         if not engine: break
 
         if output_path is None: output_path = path
         final_engine = engine
-        # Seleccion de frame
         if mode == "2":
             frame_idx = ui.ask_int(f"\nNumero de frame para la miniatura :",
                                default=1, max_val=engine.total_frames)
@@ -264,14 +289,13 @@ def main():
             start = ui.ask_int("Frame inicial", default=1, max_val=engine.total_frames)
             end = ui.ask_int("Frame final", default=engine.total_frames, max_val=engine.total_frames)
 
-        # Escala, posicion, orientacion y color de fondo
         scale = ui.ask_float("Escala", default=1.0)
         pos_key = ui.ask_position()
 
         if res_video is None:
             res_video = ui.ask_video_setup()
             bg_color = ui.ask_background()
-        # Cacheo de la semilla
+        # Cacheó de la semilla
         print("- Procesando...")
         base_frames = engine.get_base_processed(start, end, res_video, scale, bg_color, pos_key, existing_frames=base_frames)
 
@@ -281,25 +305,49 @@ def main():
 
     # Salida
     if mode == "2":
+        # Formato de imagen
         out_file=output_path.parent / f"{output_path.stem}_img.png"
         Image.fromarray(base_frames[0]).save(out_file)
         print(f"\n Imagen Creada :) {out_file.name}")
     else:
-        # Tiempos de la animación
-        duration_s = ui.ask_time_format()
+        # Formato de Video
+        # Definir animación principal
+        duration_s = ui.ask_time("Duración de la Animación (sin contar delays)", default=4.0)
+
         print(f"\n: -- Velocidad de Animación -- :")
-        manual = input("¿Velocidad manual para el sprite? [s/N]: ").lower() == 's'
-        anim_time = ui.ask_float("Segundos por vuelta", default=1.0) if manual else duration_s
+        custom_speed = input("¿Definir la duración de una vuelta del sprite? [s/N]: ").lower() == 's'
+        anim_time = ui.ask_float("Segundos por vuelta", default=1.0) if custom_speed else duration_s
         loop = input("¿Activar Bucle (Loop)? [s/N]: ").lower() == 's'
-        # Ultimo frame
+
+        # Definir Delays (Intro / Outro)
+        intro_delay = ui.ask_time("Delay Inicial", default=0.0)
+        outro_delay = ui.ask_time("Delay Final", default=0.0)
+
+        # Determinar qué mostrar durante los delays
+        keep_first = True
         keep_last = True
-        if not loop and anim_time < duration_s:
-            keep_last = input("¿Dejar el último sprite al terminar la animación? [s/N]: ").lower() != 'n'
-        # Calculo de los FPS reales para que la animación dure lo que se pidio
+
+        if intro_delay > 0.0:
+            keep_first = input("¿Mostrar el primer sprite durante el delay inicial? [s/N]: ").lower() != 'n'
+
+        if outro_delay > 0.0:
+            keep_last = input("¿Dejar el último sprite durante el delay final? [s/N]: ").lower() != 'n'
+
         final_fps = max(0.1, len(base_frames) / anim_time)
-        # Renderizamos (Streaming)
         out_file = output_path.with_suffix(".mp4")
-        VideoRenderer.render(out_file, base_frames, final_engine.clean_frame, duration_s, loop, final_fps, keep_last)
+
+        VideoRenderer.render(
+            out_name=out_file,
+            base_frames=base_frames,
+            clean_frame=final_engine.clean_frame,
+            duration_s=duration_s,
+            loop=loop,
+            fps=final_fps,
+            intro_delay=intro_delay,
+            outro_delay=outro_delay,
+            keep_first=keep_first,
+            keep_last=keep_last
+        )
         print(f"\n- Video Creado :) {out_file.name}")
 
 if __name__ == "__main__":
